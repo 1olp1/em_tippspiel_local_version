@@ -1,24 +1,38 @@
 from flask import Flask, flash, redirect, render_template, request, session
 from flask_session import Session
+from sqlalchemy import create_engine, Column, Integer, String
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
 from werkzeug.security import check_password_hash, generate_password_hash
-from helpers import login_required, get_matches, get_league_table, get_current_datetime_str, get_current_datetime_as_object, update_matches_db, update_league_table, is_update_needed_matches, is_update_needed_league_table, update_user_scores, add_up_decimals_to_6, convert_iso_datetime_to_human_readable, get_insights, get_rangliste_data, get_teams, convert_iso_to_datetime_without_decimals
+from helpers import login_required, get_matches, get_league_table, get_current_datetime_str, get_current_datetime_as_object, update_matches_db, update_league_table, is_update_needed_matches, is_update_needed_league_table, update_user_scores, add_up_decimals_to_6, convert_iso_datetime_to_human_readable, get_insights, get_rangliste_data, get_teams, convert_iso_to_datetime_without_decimals, get_cursor
 from datetime import datetime, timedelta
 from cs50 import SQL
+import sqlite3
 
 # Configure application
 app = Flask(__name__)
-
-
-# Configure http headers for correct image loading
-headers={"Accept": "*/*", "User-Agent": "python-requests"}
 
 # Configure session to use filesystem (instead of signed cookies)
 app.config["SESSION_PERMANENT"] = False
 app.config["SESSION_TYPE"] = "filesystem"
 Session(app)
 
-# Connect to the SQLite database
-db = SQL("sqlite:///tippspiel.db")
+engine = create_engine('sqlite:///tippspiel.db', echo=True)
+Session = sessionmaker(bind=engine)
+session = Session()
+
+Base = declarative_base()
+
+class User(Base):
+    __tablename__ = 'users'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String, unique=True, nullable=False)
+    hash = Column(String, nullable=False)
+    total_points = Column(Integer, default=0)
+    correct_result = Column(Integer, default=0)
+    correct_goal_diff = Column(Integer, default=0)
+    correct_tendency = Column(Integer, default=0)
 
 
 @app.after_request
@@ -274,7 +288,6 @@ def logout():
 @app.route("/register", methods=["GET", "POST"])
 def register():
     """Register user"""
-
     if request.method == "POST":
         username = request.form.get("username")
         password = request.form.get("password")
@@ -284,13 +297,9 @@ def register():
             flash("Kein Benutzername angegeben", 'error')
             return redirect("/register")
         
-        # Query database for username
-        rows = db.execute(
-            "SELECT * FROM users WHERE username = ?", username
-        )
-
+        existing_user = session.query(User).filter_by(username=username).first()
         # Check if username already exists
-        if len(rows) == 1:
+        if existing_user:
             flash("Benutzername bereits vergeben", 'error')
             return redirect("/register")
 
@@ -302,8 +311,12 @@ def register():
         # Hash the pw
         hashed_pw = generate_password_hash(password)
 
-        # Insert user into database
-        db.execute("INSERT INTO users (username, hash) VALUES(?, ?)", username, hashed_pw)
+        # Create a new User object
+        new_user = User(username=username, hash=hashed_pw)
+
+         # Add new user to session and commit to database
+        session.add(new_user)
+        session.commit()
 
         # Show message
         flash("Erfolgreich registriert!", 'success')

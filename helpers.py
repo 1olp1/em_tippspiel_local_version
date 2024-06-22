@@ -6,6 +6,7 @@ import os
 from PIL import Image
 from datetime import datetime
 from cs50 import SQL
+import sqlite3
 
 # Prepare API requests
 league = "em"      # bl1 for 1. Bundesliga
@@ -26,6 +27,14 @@ db = SQL("sqlite:///tippspiel.db")
 
 # Control the update mechanism of the database concerning the openliga updates
 automatic_updates = False
+
+
+def get_cursor():
+    # Connect to the SQLite database
+    conn = sqlite3.connect("tippspiel.db")
+
+    return conn,  conn.cursor()
+
 
 def get_local_matches():
     matches_db = db.execute("""
